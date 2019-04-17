@@ -1,0 +1,150 @@
+Quickly Setup Sock Shop Demo on Vbox with Oracle Vagrant Boxes
+Part 1
+
+-	Install git, docker-engine, VirtualBox-6.0 and vagrant rpms
+-	Clone Vagrant boxes from Oracle github repo
+	$git clone https://github.com/oracle/vagrant-boxes
+-	Switch to provisioning directory
+	$cd vagrant-boxes/Kubernetes
+-	Create 1X Master and 2X worker nodes with vagrant
+	$vagrant up master worker1 worker2
+-	SSH to master node
+	$vagrant ssh master
+-	Provision K8S master node as root
+	$sudo -i
+	#/vagrant/scripts/kubeadm-setup-master.sh
+	(It may take some time depending on your Internet connectivity)
+	(pre-req : Accept terms and conditions on Oracle Container registry website, required once only)
+-	Provision worker node(s)
+	$vagrant ssh worker1
+	$sudo -i
+	#/vagrant/scripts/kubeadm-setup-worker.sh
+	(Repeat these steps for worker2)
+-	Verify master and worker nodes status :
+	$kubectl get nodes
+	You should see something like : 
+	[vagrant@master kubernetes]$ kubectl get nodes
+	NAME                 STATUS   ROLES    AGE    VERSION
+	master.vagrant.vm    Ready    master   160m   v1.12.7+1.1.2.el7
+	worker1.vagrant.vm   Ready    <none>   157m   v1.12.7+1.1.2.el7
+	worker2.vagrant.vm   Ready    <none>   151m   v1.12.7+1.1.2.el7
+
+-	Install git on master node
+	$sudo yum install git -y
+-	Clone sock-shop demo from weaveworks repo
+	$git clone https://github.com/microservices-demo/microservices-demo
+-	Deploy sock-shop microservice 
+	$cd microservices-demo/deploy/kubernetes
+	$kubectl create namespace sock-shop
+	$kubectl apply -f complete-demo.yaml
+-	Verify that all services of sock-shop are up and running.
+	$ kubectl get pods --namespace sock-shop
+NAME                            READY   STATUS    RESTARTS   AGE
+carts-55f7f5c679-57qjp          1/1     Running   1          152m
+carts-db-5c55874946-nxrzq       1/1     Running   1          152m
+catalogue-5764fdf6d-gxhvc       1/1     Running   1          152m
+catalogue-db-66ff5bbbf5-d7j2j   1/1     Running   1          152m
+front-end-f99dbcb9c-xp9fb       1/1     Running   1          152m
+orders-7b69bf5686-6hl84         1/1     Running   1          152m
+orders-db-7bc46bdb98-mjwlg      1/1     Running   1          152m
+payment-79769c5874-lgnmg        1/1     Running   1          152m
+queue-master-56894bf9b8-87zb7   1/1     Running   1          152m
+rabbitmq-bf496c754-d6r5s        1/1     Running   1          152m
+shipping-7d6f7bf67b-wgds4       1/1     Running   1          152m
+user-7d4d7c9675-6f5j9           1/1     Running   1          152m
+user-db-5d6b6cd769-c894z        1/1     Running   1          152m
+
+-	Open a browser on Vbox host and point to sock-shop url : http://192.168.99.100:30001/index.html
+
+----------
+Part 2    |
+----------
+In this part we will deploy K8S dashboard, Setup dashboard admin account, Setup Monitoring infrastructure and do some Load testing with locust.
+-	Deploy K8S dashboard : (https://kubernetes.io/docs/tasks/access-application-cluster/web-ui-dashboard/)
+	$kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/master/aio/deploy/recommended/kubernetes-dashboard.yaml
+
+-	Create admin user and grant role/priv.
+	$ cat <<EOF >>dashboard-adminuser.yaml 
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: admin-user
+  namespace: kube-system
+EOF
+
+$ cat <<EOF >>dashboard-adminuser-clusterrole.yaml 
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: admin-user
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: admin-user
+  namespace: kube-system
+EOF
+
+-	Apply the config
+	$kubectl apply -f dashboard-adminuser.yaml
+	$kubectl apply -f dashboard-adminuser-clusterrole.yaml
+
+-	Generate a bearer token for authentication
+	$kubectl -n kube-system describe secret $(kubectl -n kube-system get secret | grep admin-user | awk '{print $1}')
+	(It should print something like:)
+
+Name:         admin-user-token-6gl6l
+Namespace:    kube-system
+Labels:       <none>
+Annotations:  kubernetes.io/service-account.name=admin-user
+              kubernetes.io/service-account.uid=b16afba9-dfec-11e7-bbb9-901b0e532516
+
+Type:  kubernetes.io/service-account-token
+
+Data
+====
+ca.crt:     1025 bytes
+namespace:  11 bytes
+token:      eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJrdWJlLXN5c3RlbSIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VjcmV0Lm5hbWUiOiJhZG1pbi11c2VyLXRva2VuLTZnbDZsIiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZXJ2aWNlLWFjY291bnQubmFtZSI6ImFkbWluLXVzZXIiLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlcnZpY2UtYWNjb3VudC51aWQiOiJiMTZhZmJhOS1kZmVjLTExZTctYmJiOS05MDFiMGU1MzI1MTYiLCJzdWIiOiJzeXN0ZW06c2VydmljZWFjY291bnQ6a3ViZS1zeXN0ZW06YWRtaW4tdXNlciJ9.M70CU3lbu3PP4OjhFms8PVL5pQKj-jj4RNSLA4YmQfTXpPUuxqXjiTf094_Rzr0fgN_IVX6gC4fiNUL5ynx9KU-lkPfk0HnX8scxfJNzypL039mpGt0bbe1IXKSIRaq_9VW59Xz-yBUhycYcKPO9RM2Qa1Ax29nqNVko4vLn1_1wPqJ6XSq3GYI8anTzV8Fku4jasUwjrws6Cn6_sPEGmL54sq5R4Z5afUtv-mItTmqZZdxnkRqcJLlg2Y8WbCPogErbsaCDJoABQ7ppaqHetwfM_0yMun6ABOQbIwwl8pspJhpplKwyo700OSpvTT9zlBsu-b35lzXGBRHzv5g_RA
+
+-	Enable dashboard proxy service
+	$kubectl proxy
+
+-	Copy the token digest to paste in K8S dashboard login screen
+
+-	URL can be accessed at http://localhost:8001/api/v1/namespaces/kube-system/services/https:kubernetes-dashboard:/proxy/.
+
+-	Configure Monitoring (Prometheus and Grafana)
+	$kubectl create -f ./deploy/kubernetes/manifests-monitoring
+	
+- 	To list all service ports, execute the following command
+	$kubectl get services --all-namespaces
+-	Open grafana and prometheus dashboard. Grab the port numbers as follows
+	$ kubectl get services --all-namespaces|grep grafana
+monitoring    grafana                LoadBalancer   10.109.7.114     <pending>     80:31104/TCP     22m
+
+PORT # is 31104
+
+	$ kubectl get services --all-namespaces|grep prometheus
+monitoring    prometheus             NodePort       10.107.122.185   <none>        9090:31090/TCP   24m
+
+PORT # is  31090
+
+
+-	Lets run some load tests with locust container from weaveworks, from the "Vbox HOST" execute
+	$docker run --net=host weaveworksdemos/load-test -h 192.168.99.100:30001 -r 100 -c 10
+
+Options:
+  -d  Delay before starting
+  -h  Target host url, e.g. localhost:80
+  -c  Number of clients (default 2)
+  -r  Number of requests (default 10)
+
+PS : I run netdata on vbox host to monitor system load and other key matrix
+
+
+
+
+	
