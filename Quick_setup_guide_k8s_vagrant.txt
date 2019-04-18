@@ -126,6 +126,14 @@ token:      eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZ
 monitoring    grafana                LoadBalancer   10.109.7.114     <pending>     80:31104/TCP     22m
 
 PORT # is 31104
+** Grafana login creds are admin:admin
+
+-	Configure Datasource in Grafana dashboard, At least in one instance I found the datasource entry is missing. To 	configure datasource login to Grafana dashboard with user : admin, password: admin  and go to configure datasource 	   as follows : 
+	name : prometheus
+	type : prometheus
+	url  : http://prometheus:9090
+	access : proxy
+	Save&Test
 
 	$ kubectl get services --all-namespaces|grep prometheus
 monitoring    prometheus             NodePort       10.107.122.185   <none>        9090:31090/TCP   24m
